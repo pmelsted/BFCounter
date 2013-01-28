@@ -1,7 +1,7 @@
 
 
 #include <iostream>
-
+#include <string.h>
 
 #include "CountBF.hpp"
 #include "DumpBF.hpp"

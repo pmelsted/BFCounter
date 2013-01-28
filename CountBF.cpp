@@ -246,6 +246,9 @@ void CountBF_Quake(const CountBF_ProgramOptions &opt) {
 
   // for each read
   while (FQ.read_next(name, &name_len, s, &len, NULL, qual) >= 0) {
+    if (len < k) {
+      continue;
+    }
     Kmer km(s);
     for (size_t i = 0; i <= len-k; ++i) {
       num_kmers++;
@@ -277,6 +280,9 @@ void CountBF_Quake(const CountBF_ProgramOptions &opt) {
   hmapq_t::iterator it;
   float qlogsum;
   while (FQ.read_next(name, &name_len, s, &len, NULL, qual) >= 0) {
+    if (len < k) {
+      continue;
+    }
     Kmer km(s);
     qlogsum = 0.0f;
     for (size_t i = 0; i < k; ++i) {
@@ -358,6 +364,9 @@ void CountBF_Normal(const CountBF_ProgramOptions &opt) {
 
   // for each read
   while (FQ.read_next(name, &name_len, s, &len, NULL, qual) >= 0) {
+    if (len < k) {
+      continue;
+    }
     // TODO: add code to handle N's, currently all N's are mapped to A
     Kmer km(s);
     for (size_t i = 0; i <= len-k; ++i) {
@@ -389,6 +398,9 @@ void CountBF_Normal(const CountBF_ProgramOptions &opt) {
   hmap_t::iterator it;
 
   while (FQ.read_next(name, &name_len, s, &len, NULL, qual) >= 0) {
+    if (len < k) {
+      continue;
+    }
     Kmer km(s);
     for (size_t i = 0; i <= len-k; ++i) {
       if (i > 0) {
