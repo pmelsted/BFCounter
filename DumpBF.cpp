@@ -148,6 +148,8 @@ void DumpBF_Quake(const DumpBF_ProgramOptions &opt) {
 void DumpBF_Normal(const DumpBF_ProgramOptions &opt) {
    // load hashtable from file
   hmap_t kmap;
+  hmapL_t kmap_Large;
+
   FILE* f = fopen(opt.input.c_str(), "rb");
   if (f == NULL) {
     cerr << "Could not open file " << opt.input << endl;
@@ -155,6 +157,8 @@ void DumpBF_Normal(const DumpBF_ProgramOptions &opt) {
   } else {
     kmap.read_metadata(f);
     kmap.read_nopointer_data(f);
+    kmap_Large.read_metadata(f);
+    kmap_Large.read_nopointer_data(f);
     fclose(f);
     f = NULL;
   }
@@ -176,10 +180,17 @@ void DumpBF_Normal(const DumpBF_ProgramOptions &opt) {
     size_t cov;
     Kmer km;
     hmap_t::iterator it,it_end;
+    hmapL_t::const_iterator l_it,l_it_end;
     it_end = kmap.end();
     for (it = kmap.begin(); it != kmap.end(); ++it) {
       km = it->GetKey();
       cov = it->GetVal();
+      if (cov == 255) {
+	l_it = kmap_Large.find(km);
+	if (l_it != kmap_Large.end()) {
+	  cov = l_it->second;
+	}
+      }
       km.toString(&buf[0]);
       fprintf(of, "%s\t%zu\n",buf, cov);
     }

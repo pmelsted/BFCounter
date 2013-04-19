@@ -349,6 +349,7 @@ void CountBF_Normal(const CountBF_ProgramOptions &opt) {
   // create hash table and bloom filter
   size_t k = Kmer::k;
   hmap_t kmap;
+  hmapL_t kmap_Large;
   bloom_filter BF(opt.nkmers, (size_t) opt.bf, (unsigned long) time(NULL));
   
   char name[8196],s[8196], qual[8196];
@@ -413,7 +414,17 @@ void CountBF_Normal(const CountBF_ProgramOptions &opt) {
       it = kmap.find(rep);
       if (it != kmap.end()) {
 	//cerr << "Val before: " <<  it->GetVal();
-	it->SetVal(it->GetVal()+1); // add 1 to count
+	size_t val = it->GetVal()+1;
+	it->SetVal(val); // add 1 to count, no effect if 255 or higher
+	if (val >= 255) {
+	  // insert into large value table
+	  hmapL_t::iterator l_it = kmap_Large.find(rep);
+	  if (l_it == kmap_Large.end()) {
+	    pair<hmapL_t::iterator,bool> p = kmap_Large.insert(make_pair(rep,255));
+	  } else {
+	    l_it->second += 1;
+	  }
+	}
 	total_cov += 1;
 	//cerr << ", after: " << it->GetVal() << endl;
       }
@@ -466,6 +477,8 @@ void CountBF_Normal(const CountBF_ProgramOptions &opt) {
     kmap.write_metadata(f);
     // then the actual hashtable
     kmap.write_nopointer_data(f);
+    kmap_Large.write_metadata(f);
+    kmap_Large.write_nopointer_data(f);
     fclose(f);
     f = NULL;
   }

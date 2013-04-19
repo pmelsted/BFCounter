@@ -1,0 +1,8 @@
+# Compiled Object files
+*.o
+
+# Other
+*~
+\#*
+.\#*
+BFCounter
