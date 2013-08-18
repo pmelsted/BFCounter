@@ -11,6 +11,7 @@ struct KmerIntPair {
   char v[sizeof(Kmer)+sizeof(char)];
   unsigned int GetVal() const;
   void SetVal(const unsigned int k);
+  bool ParallelIncrement();
   const Kmer& GetKey() const;
   void SetKey(const Kmer& km);
 

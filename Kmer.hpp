@@ -1,5 +1,5 @@
-#ifndef BFC_KMER_HPP
-#define BFC_KMER_HPP
+#ifndef BFG_KMER_HPP
+#define BFG_KMER_HPP
 
 #ifndef MAX_KMER_SIZE
  #define MAX_KMER_SIZE 32
@@ -9,23 +9,27 @@
 #include <stdint.h>
 #include <cassert>
 #include <cstring>
+#include <string>
 
 #include "hash.hpp"
 
 
-//for debug
-
-char *int2bin(uint32_t a, char *buffer, int buf_size);
 
 
-
-
+/* Short description: 
+ *  - Store kmer strings by using 2 bits per base instead of 8 
+ *  - Easily return reverse complements of kmers, e.g. TTGG -> CCAA
+ *  - Easily compare kmers
+ *  - Provide hash of kmers
+ *  - Get last and next kmer, e.g. ACGT -> CGTT or ACGT -> AACGT
+ *  */
 class Kmer {
  public:
 
   Kmer();
   Kmer(const Kmer& o);
-  explicit Kmer(const char *s); 
+  explicit Kmer(const char *s);
+
   
 
   Kmer& operator=(const Kmer& o);
@@ -47,6 +51,7 @@ class Kmer {
   
 
   Kmer twin() const;
+  Kmer rep() const;
 
   Kmer getLink(const size_t index) const;
 
@@ -54,9 +59,10 @@ class Kmer {
 
   Kmer backwardBase(const char b) const;
   
-  void printBinary() const;
+  std::string getBinary() const;
   
   void toString(char * s) const;
+  std::string toString() const;
 
   // static functions
   static void set_k(unsigned int _k);
@@ -67,20 +73,21 @@ class Kmer {
 
  private:
   static unsigned int k_bytes;
-  //  static unsigned int k_longs;
-  static unsigned int k_modmask;
+  static unsigned int k_longs;
+  static unsigned int k_modmask; // int?
 
   // data fields
   union {
     uint8_t bytes[MAX_K/4];
-    //uint32_t longs[MAX_K/16];
+    uint64_t longs[MAX_K/32];
   };
 
 
   // private functions
-  void shiftRight(int shift);
+//void shiftForward(int shift);
+  
+//void shiftBackward(int shift);
 
-  void shiftLeft(int shift);
 };
 
 
@@ -91,4 +98,4 @@ struct KmerHash {
 };
 
 
-#endif // BFC_KMER_HPP
+#endif // BFG_KMER_HPP

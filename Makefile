@@ -8,9 +8,9 @@ MAX_KMER_SIZE = 32
 CC = g++
 CXX = g++
 INCLUDES = -I.
-CXXFLAGS = -c -Wall -Wno-reorder $(INCLUDES) -DMAX_KMER_SIZE=$(MAX_KMER_SIZE) -fPIC
+CXXFLAGS = -c -Wall -Wno-reorder $(INCLUDES) -DMAX_KMER_SIZE=$(MAX_KMER_SIZE) -fPIC -fopenmp
 LDFLAGS =
-LDLIBS  = -lm -lz
+LDLIBS  = -lm -lz -lgomp
 
 all: CXXFLAGS += -O3
 all: target
@@ -27,7 +27,7 @@ profile: target
 
 target: BFCounter
 
-OBJECTS =  CountBF.o DumpBF.o Kmer.o KmerIntPair.o hash.o bloom_filter.o fastq.o 
+OBJECTS =  CountBF.o DumpBF.o Kmer.o KmerIntPair.o KmerIterator.o hash.o fastq.o 
 
 testread: testread.o $(OBJECTS)
 	$(CC) $(INCLUDES) $(LDFLAGS) $(LDLIBS) $(OBJECTS) testread.o -o testread
@@ -43,9 +43,9 @@ BFCounter.o: BFCounter.cpp
 CountBF.o: CountBF.cpp
 DumpBF.o: DumpBF.cpp
 KmerIntPair.o: KmerIntPair.cpp
+KmerIterator.o: KmerIterator.hpp KmerIterator.cpp
 fastq.o: fastq.hpp fastq.cpp 
 kmer.o: kmer.hpp kmer.cpp
-bloom_filter.o: bloom_filter.hpp bloom_filter.cpp
 hash.o: hash.hpp hash.cpp	
 
 clean:

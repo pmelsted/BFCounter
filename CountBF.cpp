@@ -20,14 +20,13 @@
 #include "HashTables.hpp"
 #include "fastq.hpp"
 #include "Kmer.hpp"
+#include "KmerIterator.hpp"
+#include "BloomFilter.hpp"
 #include "bloom_filter.hpp"
 
 #include "QLogTable.hpp"
 
 // structs for getopt
-
-
-
 struct CountBF_ProgramOptions {
   size_t k;
   size_t nkmers;
@@ -36,9 +35,12 @@ struct CountBF_ProgramOptions {
   bool quake;
   size_t bf;
   size_t qs;
+  size_t threads;
+  uint32_t seed;
+  size_t read_chunksize;
   vector<string> files;
 
-  CountBF_ProgramOptions() : k(0), nkmers(0), verbose(false), quake(false), bf(4), qs(0) {}
+  CountBF_ProgramOptions() : k(0), nkmers(0), verbose(false), quake(false), bf(4), qs(0), threads(1), seed(0), read_chunksize (10000) {}
 };
 
 void CountBF_PrintUsage() {
@@ -48,6 +50,9 @@ void CountBF_PrintUsage() {
   cerr << endl << endl <<
     "-k, --kmer-size=INT             Size of k-mers, at most " << (int) (Kmer::MAX_K-1)<< endl << 
     "-n, --num-kmers=LONG            Estimated number of k-mers (upper bound)" << endl <<
+    "-t, --threads=INT               Number of threads to use (default 1)" << endl <<
+    "-c, --chunk-size=INT            Number of reads to proccess in parallel (default 10000)" << endl << 
+    "-s, --seed=INT                  seed (32-bit int) for randomization" << endl <<
     "-o, --output=STRING             Filename for output" << endl <<
     "-b, --bloom-bits=INT            Number of bits to use in Bloom filter (default=4)" << endl <<
     "    --quake                     Count q-mers for use with Quake (default=FALSE)" << endl <<
@@ -62,12 +67,15 @@ void CountBF_PrintUsage() {
 void CountBF_ParseOptions(int argc, char **argv, CountBF_ProgramOptions &opt) {
   int verbose_flag = 0;
   int quake_flag = 0;
-  const char* opt_string = "n:k:o:b:";
+  const char* opt_string = "n:k:o:b:t:s:c:";
   static struct option long_options[] =
   {
     {"verbose", no_argument,  &verbose_flag, 1},
     {"kmer-size", required_argument, 0, 'k'},
     {"num-kmers", required_argument, 0, 'n'},
+    {"seed", required_argument, 0, 's'},
+    {"threads", required_argument, 0, 't'},
+    {"chunk-size", required_argument, 0, 'c'},
     {"output", required_argument, 0, 'o'},
     {"bloom-bits", required_argument, 0, 'b'},
     {"quality-scale", required_argument, 0, 0},
@@ -103,6 +111,15 @@ void CountBF_ParseOptions(int argc, char **argv, CountBF_ProgramOptions &opt) {
       break;
     case 'b':
       opt.bf = atoi(optarg);
+      break;
+    case 's':
+      opt.seed = atoi(optarg);
+      break;
+    case 't':
+      opt.threads = atoi(optarg);
+      break;
+    case 'c':
+      opt.read_chunksize = atoi(optarg);
       break;
     default: break;
     }
@@ -172,6 +189,20 @@ bool CountBF_CheckOptions(CountBF_ProgramOptions &opt) {
     ret = false;
   }
 
+  if (opt.threads <= 0) {
+    cerr << "Error, invalid value for threads: " << opt.threads << endl;
+    cerr << "Values must be positive integers" << endl;
+    ret = false;
+  }
+
+ if (opt.read_chunksize <= 0) {
+    cerr << "Error, invalid value for chunk-size: " << opt.read_chunksize << endl;
+    cerr << "Values must be positive integers" << endl;
+    ret = false;
+  }
+
+
+
   if (opt.files.size() == 0) {
     cerr << "Need to specify files for input" << endl;
     ret = false;
@@ -212,7 +243,7 @@ bool CountBF_CheckOptions(CountBF_ProgramOptions &opt) {
       }
     }
   }
-  
+
   //TODO: check if we have permission to write to outputfile
   
   return ret;
@@ -347,10 +378,22 @@ void CountBF_Quake(const CountBF_ProgramOptions &opt) {
 
 void CountBF_Normal(const CountBF_ProgramOptions &opt) {
   // create hash table and bloom filter
-  size_t k = Kmer::k;
+
   hmap_t kmap;
   hmapL_t kmap_Large;
-  bloom_filter BF(opt.nkmers, (size_t) opt.bf, (unsigned long) time(NULL));
+  
+  size_t num_threads = opt.threads;
+#ifdef _OPENMP
+  omp_set_num_threads(num_threads);
+#endif
+  
+  uint32_t seed = opt.seed;
+  if (seed == 0) {
+    seed = (uint32_t) time(NULL);
+  }
+  BloomFilter BF(opt.nkmers, (size_t) opt.bf, seed);
+  
+  bool done = false;
   
   char name[8196],s[8196], qual[8196];
   size_t name_len,len;
@@ -359,34 +402,75 @@ void CountBF_Normal(const CountBF_ProgramOptions &opt) {
   uint64_t num_kmers = 0;  
   uint64_t filtered_kmers = 0;
   uint64_t total_cov = 0;
+  size_t read_chunksize = opt.read_chunksize;
 
   // loops over all files
   FastqFile FQ(opt.files);
+  string *readv = new string[read_chunksize];
+  vector<Kmer> *parray = new vector<Kmer>[num_threads];
+  vector<Kmer> *smallv;
+  size_t round = 0;
 
-  // for each read
-  while (FQ.read_next(name, &name_len, s, &len, NULL, qual) >= 0) {
-    if (len < k) {
-      continue;
-    }
-    // TODO: add code to handle N's, currently all N's are mapped to A
-    Kmer km(s);
-    for (size_t i = 0; i <= len-k; ++i) {
-      num_kmers++;
-      if (i > 0) {
-	km = km.forwardBase(s[i+k-1]);
-      }
-      Kmer tw = km.twin();
-      Kmer rep = (km < tw) ? km : tw;
-      if (BF.contains(rep)) {
-	// has no effect if already in map
-	pair<hmap_t::iterator,bool> ref = kmap.insert(KmerIntPair(rep,0));
+   
+  // for each batch
+  while (!done) {
+    size_t reads_now = 0;
+    while (reads_now < read_chunksize) {
+      if (FQ.read_next(name, &name_len, s, &len, NULL, NULL) >= 0) {
+	readv[reads_now].assign(s);
+	++n_read;
+	++reads_now;
       } else {
-	BF.insert(rep);
+	done = true;
+	break;
       }
     }
-    ++n_read;
+    ++round;
 
-    if (opt.verbose && n_read % 1000000 == 0) {
+#pragma omp parallel default(shared) private(smallv) shared(parray, readv, BF, reads_now) reduction(+: num_kmers, n_read)
+    {
+      KmerIterator iter, iterend;
+      size_t threadnum = 0;
+#ifdef _OPENMP
+      threadnum = omp_get_thread_num();
+#endif
+      smallv = &parray[threadnum];
+
+      #pragma omp for nowait
+      for (int index = 0; index < reads_now; ++index) {
+	// for each read in our batch
+	const char *cstr = readv[index].c_str();
+	iter = KmerIterator(cstr);
+	n_read++;
+	for(; iter != iterend; ++iter) {
+	  // for each valid k-mer in read
+	  ++num_kmers;
+	  Kmer rep = iter->first.rep();
+	  size_t r = BF.search(rep);
+	  if (r == 0) {
+	    // in bf
+	    smallv->push_back(rep);
+	  } else {
+	    if (BF.insert(rep) == r) {
+	      // inserted by us
+	    } else {
+	      // might have been inserted by other thread simultaneously
+	      smallv->push_back(rep);
+	    }
+	  }
+	} // done with k-mers
+      } // done with read
+    } // done with this batch
+
+    // this part is serial
+    for (size_t i = 0; i < num_threads; i++) {
+      for (vector<Kmer>::const_iterator it = parray[i].begin(); it != parray[i].end(); ++it) {
+	kmap.insert(KmerIntPair(*it,0)); // no extra effect if duplicated
+      }
+      parray[i].clear();
+    }
+
+    if (opt.verbose && read_chunksize > 1) {
       cerr << "processed " << n_read << " reads" << endl;
     }
   }
@@ -396,38 +480,73 @@ void CountBF_Normal(const CountBF_ProgramOptions &opt) {
   }
   // close all files, reopen and get accurate counts;
   FQ.reopen();
-  hmap_t::iterator it;
 
-  while (FQ.read_next(name, &name_len, s, &len, NULL, qual) >= 0) {
-    if (len < k) {
-      continue;
+
+
+
+  done = false;
+  while (!done) {
+    size_t reads_now = 0;
+    while (reads_now < read_chunksize) {
+      if (FQ.read_next(name, &name_len, s, &len, NULL, NULL) >= 0) {
+	readv[reads_now].assign(s);
+	++n_read;
+	++reads_now;
+      } else {
+	done = true;
+	break;
+      }
     }
-    Kmer km(s);
-    for (size_t i = 0; i <= len-k; ++i) {
-      if (i > 0) {
-	km = km.forwardBase(s[i+k-1]);
-      }
+    ++round;
 
-      Kmer tw = km.twin();
-      Kmer rep = (km < tw) ? km : tw;
+#pragma omp parallel default(shared) private(smallv) shared(parray, readv, BF, reads_now) reduction(+: total_cov)
+    {
+      hmap_t::iterator it;
+      KmerIterator iter, iterend;
+      size_t threadnum = 0;
+#ifdef _OPENMP
+      threadnum = omp_get_thread_num();
+#endif
+      smallv = &parray[threadnum];
 
-      it = kmap.find(rep);
-      if (it != kmap.end()) {
-	//cerr << "Val before: " <<  it->GetVal();
-	size_t val = it->GetVal()+1;
-	it->SetVal(val); // add 1 to count, no effect if 255 or higher
-	if (val >= 255) {
-	  // insert into large value table
-	  hmapL_t::iterator l_it = kmap_Large.find(rep);
-	  if (l_it == kmap_Large.end()) {
-	    pair<hmapL_t::iterator,bool> p = kmap_Large.insert(make_pair(rep,255));
-	  } else {
-	    l_it->second += 1;
+#pragma omp for nowait
+      for (int index = 0; index < reads_now; ++index) {
+	// for each read in our batch
+	const char *cstr = readv[index].c_str();
+	iter = KmerIterator(cstr);
+	n_read++;
+	for(; iter != iterend; ++iter) {
+	  // for each valid k-mer in read
+	  ++num_kmers;
+	  Kmer rep = iter->first.rep();
+	  it = kmap.find(rep);
+	  if (it != kmap.end()) {
+	    bool b = it->ParallelIncrement();
+	    if (!b) { // ok we did not increment is so it was 255 already
+	      smallv->push_back(rep); // large values, handle serially
+	    }
+	    total_cov += 1;
 	  }
+	} // done with k-mers
+      } // done with read
+    } // done with this batch
+
+    // this part is serial
+    for (size_t i = 0; i < num_threads; i++) {
+      for (vector<Kmer>::const_iterator it = parray[i].begin(); it != parray[i].end(); ++it) {
+	Kmer rep = *it;
+	hmapL_t::iterator l_it = kmap_Large.find(rep);
+	if (l_it == kmap_Large.end()) {
+	  kmap_Large.insert(make_pair(rep,255));
+	} else {
+	  l_it->second += 1;
 	}
-	total_cov += 1;
-	//cerr << ", after: " << it->GetVal() << endl;
       }
+      parray[i].clear();
+    }
+
+    if (opt.verbose && read_chunksize > 1) {
+      cerr << "processed " << n_read << " reads" << endl;
     }
   }
   
@@ -441,7 +560,7 @@ void CountBF_Normal(const CountBF_ProgramOptions &opt) {
   kmap.set_deleted_key(km_del);
   size_t n_del =0 ;
 
-  for(it = kmap.begin(); it != kmap.end(); ) {
+  for(hmap_t::iterator it = kmap.begin(); it != kmap.end(); ) {
     if (it->GetVal() <= 1) {
       hmap_t::iterator del(it);
       ++it;
