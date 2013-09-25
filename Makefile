@@ -1,4 +1,3 @@
-
 # This affects the memory usage of the program
 # we use 1 byte for every 4 bp in kmers. Ideally
 # this parameter should be a multiple of 4.
@@ -30,13 +29,13 @@ target: BFCounter
 OBJECTS =  CountBF.o DumpBF.o Kmer.o KmerIntPair.o hash.o bloom_filter.o fastq.o 
 
 testread: testread.o $(OBJECTS)
-	$(CC) $(INCLUDES) $(LDFLAGS) $(LDLIBS) $(OBJECTS) testread.o -o testread
+	$(CC) $(INCLUDES)  $(OBJECTS) testread.o -o testread $(LDFLAGS) $(LDLIBS)
 
 BFCounter: BFCounter.o $(OBJECTS)
-	$(CC) $(INCLUDES) $(LDFLAGS) $(LDLIBS) $(OBJECTS) BFCounter.o -o BFCounter
+	$(CC) $(INCLUDES) $(OBJECTS) BFCounter.o -o BFCounter $(LDFLAGS) $(LDLIBS) 
 
 Naive: Naive.o $(OBJECTS)
-	$(CC) $(INCLUDES) $(LDFLAGS) $(LDLIBS) $(OBJECTS) Naive.o -o Naive
+	$(CC) $(INCLUDES)  $(OBJECTS) Naive.o -o Naive $(LDFLAGS) $(LDLIBS)
 
 
 BFCounter.o: BFCounter.cpp
