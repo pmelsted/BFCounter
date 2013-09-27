@@ -31,7 +31,7 @@ void PrintVersion() {
 void PrintCite() {
   cerr << "The paper describing this software has been published." << endl;
   cerr << "When using this program in your research, please cite" << endl << endl;
-  cerr << "Melsted and Pritchard: Efficient counting of k-mers in DNA sequences using a bloom filter.";
+  cerr << "Melsted and Pritchard: Efficient counting of k-mers in DNA sequences using a bloom filter. ";
   cerr << "BMC Bioinformatics 2011 12:333." << endl << endl;
   cerr << "The full paper is available online with open-access at" << endl << endl;;
   cerr << "http://www.biomedcentral.com/1471-2105/12/333" << endl << endl;

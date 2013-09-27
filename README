@@ -29,6 +29,11 @@ will provide more complete help.
 Notes
 =====
 
+* BFCounter dump will print a text file with each k-mer and the number of occurrances of the k-mer.
+  Only counts of 2 and greater will be printed, there is no limit on the number of occurrances it can handle.
+  For each k-mer only the lexicographically smaller of the k-mer and the reverse complement of the k-mer, will be printed
+  and the counts will be the sum of both values.
+
 * BFCounter was developed on x86-64 GNU/Linux. Porting to other unix-like
   platforms should be easy, but we haven't done so yet.
 
@@ -37,9 +42,6 @@ Notes
 
 License
 =======
-
-* The Bloom filter library is copyrighted by Arash Partow and distributed under
-  the Common Public License. http://www.partow.net/programming/hashfunctions/index.html
 
 * The hash functions used are from the MurmurHash Library, version 3, released under the
   MIT License. http://code.google.com/p/smhasher/

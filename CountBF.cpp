@@ -351,12 +351,11 @@ void CountBF_Quake(const CountBF_ProgramOptions &opt) {
     
     cerr << "total coverage " << total_cov << ", estimated number of kmers " << filtered_kmers << endl;
     cerr << "average coverage " << (total_cov / ((double) kmap.size())) << endl;
-    cerr << num_kmers << endl  << filtered_kmers << endl << kmap.size() << endl;
   }
 
   if (opt.verbose) {
     cerr << "Writing hash table to file " << opt.output << " .. "; cerr.flush();
-    cerr << "hashtable size is " << kmap.size() << endl;
+    cerr << "hashtable size is " << kmap.size()/(1<<20) << "MB"  << endl;
   }
   FILE* f = fopen(opt.output.c_str(), "wb");
   if (f == NULL) {
@@ -371,7 +370,10 @@ void CountBF_Quake(const CountBF_ProgramOptions &opt) {
   }
 
   if (opt.verbose) {
-    cerr << " done" << endl;
+    cerr << " done" << endl << endl;
+    cerr << " convert the file to tabular format using the command " << endl <<
+        "    BFCounter dump -k " << k << " -i " << opt.output << " -o output_file " << endl;
+       
   }
     
 }
@@ -395,7 +397,7 @@ void CountBF_Normal(const CountBF_ProgramOptions &opt) {
   
   bool done = false;
   
-  char name[8196],s[8196], qual[8196];
+  char name[8196],s[8196];//, qual[8196];
   size_t name_len,len;
 
   uint64_t n_read = 0;
@@ -437,7 +439,7 @@ void CountBF_Normal(const CountBF_ProgramOptions &opt) {
       smallv = &parray[threadnum];
 
       #pragma omp for nowait
-      for (int index = 0; index < reads_now; ++index) {
+      for (size_t index = 0; index < reads_now; ++index) {
 	// for each read in our batch
 	const char *cstr = readv[index].c_str();
 	iter = KmerIterator(cstr);
@@ -482,7 +484,7 @@ void CountBF_Normal(const CountBF_ProgramOptions &opt) {
   FQ.reopen();
 
 
-
+  n_read = 0; // reset counter
 
   done = false;
   while (!done) {
@@ -499,7 +501,7 @@ void CountBF_Normal(const CountBF_ProgramOptions &opt) {
     }
     ++round;
 
-#pragma omp parallel default(shared) private(smallv) shared(parray, readv, BF, reads_now) reduction(+: total_cov)
+#pragma omp parallel default(shared) private(smallv) shared(parray, readv, BF, reads_now) reduction(+: total_cov, n_read)
     {
       hmap_t::iterator it;
       KmerIterator iter, iterend;
@@ -510,19 +512,22 @@ void CountBF_Normal(const CountBF_ProgramOptions &opt) {
       smallv = &parray[threadnum];
 
 #pragma omp for nowait
-      for (int index = 0; index < reads_now; ++index) {
+      for (size_t index = 0; index < reads_now; ++index) {
 	// for each read in our batch
 	const char *cstr = readv[index].c_str();
 	iter = KmerIterator(cstr);
 	n_read++;
 	for(; iter != iterend; ++iter) {
 	  // for each valid k-mer in read
-	  ++num_kmers;
 	  Kmer rep = iter->first.rep();
 	  it = kmap.find(rep);
 	  if (it != kmap.end()) {
-	    bool b = it->ParallelIncrement();
-	    if (!b) { // ok we did not increment is so it was 255 already
+            bool b = true;
+            unsigned int val = it->GetVal();
+            if (val < KmerIntPair::MaxVal) {
+              b = it->ParallelIncrement();
+            }
+	    if (!b || val == KmerIntPair::MaxVal) { // ok we did not increment is so it was 255 already
 	      smallv->push_back(rep); // large values, handle serially
 	    }
 	    total_cov += 1;
@@ -537,9 +542,9 @@ void CountBF_Normal(const CountBF_ProgramOptions &opt) {
 	Kmer rep = *it;
 	hmapL_t::iterator l_it = kmap_Large.find(rep);
 	if (l_it == kmap_Large.end()) {
-	  kmap_Large.insert(make_pair(rep,255));
+	  kmap_Large.insert(make_pair(rep,KmerIntPair::MaxVal+1));
 	} else {
-	  l_it->second += 1;
+          l_it->second += 1;
 	}
       }
       parray[i].clear();
@@ -552,7 +557,9 @@ void CountBF_Normal(const CountBF_ProgramOptions &opt) {
   
   FQ.close();
 
-  cerr << "closed all files" << endl;
+  if (opt.verbose) {
+    cerr << "closed all files" << endl;
+  }
 
   // the hash map needs an invalid key to mark as deleted
   Kmer km_del;
@@ -581,12 +588,12 @@ void CountBF_Normal(const CountBF_ProgramOptions &opt) {
     
     cerr << "total coverage " << total_cov << ", estimated number of kmers " << filtered_kmers << endl;
     cerr << "average coverage " << (total_cov / ((double) kmap.size())) << endl;
-    cerr << num_kmers << endl  << filtered_kmers << endl << kmap.size() << endl;
+
   }
 
   if (opt.verbose) {
     cerr << "Writing hash table to file " << opt.output << " .. "; cerr.flush();
-    cerr << "hashtable size is" << kmap.size() << endl;
+    cerr << "hashtable size is " << kmap.size()  << " k-mers" << endl;
   }
   FILE* f = fopen(opt.output.c_str(), "wb");
   if (f == NULL) {
@@ -602,7 +609,9 @@ void CountBF_Normal(const CountBF_ProgramOptions &opt) {
     f = NULL;
   }
   if (opt.verbose) {
-    cerr << " done" << endl;
+    cerr << " done" << endl << endl;
+    cerr << " convert the file to tabular format using the command " << endl <<
+        "    BFCounter dump -k " << Kmer::k << " -i " << opt.output << " -o output_file " << endl;
   }
 }
 

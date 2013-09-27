@@ -15,6 +15,7 @@ struct KmerIntPair {
   const Kmer& GetKey() const;
   void SetKey(const Kmer& km);
 
+  static const unsigned int MaxVal = 255;
   static const size_t KmerOffset = 0;
   static const size_t IntOffset = sizeof(Kmer);
 };
