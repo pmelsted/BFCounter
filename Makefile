@@ -9,8 +9,9 @@ CC = g++
 CXX = g++
 INCLUDES = -I.
 CXXFLAGS = -c -Wall -Wno-reorder $(INCLUDES) -DMAX_KMER_SIZE=$(MAX_KMER_SIZE) -fPIC -fopenmp
-LDFLAGS =
-LDLIBS  = -lm -lz -lgomp
+LDFLAGS = 
+# remove -lgomp if you do not have openmp
+LDLIBS  = -lm -lz -lgomp -lstdc++
 
 all: CXXFLAGS += -O3
 all: target
@@ -29,14 +30,9 @@ target: BFCounter
 
 OBJECTS =  CountBF.o DumpBF.o Kmer.o KmerIntPair.o KmerIterator.o hash.o fastq.o 
 
-testread: testread.o $(OBJECTS)
-	$(CC) $(INCLUDES) $(LDFLAGS) $(LDLIBS) $(OBJECTS) testread.o -o testread
-
 BFCounter: BFCounter.o $(OBJECTS)
-	$(CC) $(INCLUDES) $(LDFLAGS) $(LDLIBS) $(OBJECTS) BFCounter.o -o BFCounter -lstdc++
+	$(CC) $(INCLUDES) $(OBJECTS) BFCounter.o -o BFCounter $(LDFLAGS) $(LDLIBS)
 
-Naive: Naive.o $(OBJECTS)
-	$(CC) $(INCLUDES) $(LDFLAGS) $(LDLIBS) $(OBJECTS) Naive.o -o Naive
 
 
 BFCounter.o: BFCounter.cpp
