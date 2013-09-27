@@ -1,4 +1,3 @@
-
 # This affects the memory usage of the program
 # we use 1 byte for every 4 bp in kmers. Ideally
 # this parameter should be a multiple of 4.
@@ -27,6 +26,7 @@ profile: clean
 profile: target
 
 target: BFCounter
+
 
 OBJECTS =  CountBF.o DumpBF.o Kmer.o KmerIntPair.o KmerIterator.o hash.o fastq.o 
 
